@@ -1,0 +1,122 @@
+# yamllint disable rule:document-start rule:line-length
+
+name: "Prepare"
+description: "Prepare the runner environment for jobs of a specific project type"
+
+inputs:
+  job:
+    description: "Job we are preparing for"
+    required: false
+    default: "unknown"
+
+  type:
+    description: "Project type we are preparing for"
+    required: true
+
+  version_checkov:
+    description: "Version of checkov to be installed"
+    required: false
+    default: "3.2.125"
+
+  version_hadolint:
+    description: "Version of hadolint to be installed"
+    required: false
+    default: "2.12.0"
+
+  version_poetry:
+    description: "Version of poetry to be installed"
+    required: false
+    default: "1.8.3"
+
+  version_python:
+    description: "Version of python to be installed"
+    required: false
+    default: "3.10"
+
+runs:
+  using: "composite"
+  steps:
+
+    #
+    # COMMON
+    #
+
+    - name: check runner os
+      if: ${{ runner.os != 'Linux' }}
+      shell: bash
+      run: |
+        echo "::error title=unsupported os"
+        exit 1
+
+
+    - name: install pipx
+      shell: bash
+      run: |
+        pip install --user pipx
+        which pipx
+        pipx ensurepath
+
+    #
+    # TYPE: CONTAINER
+    #
+
+    - name: install hadolint
+      if: ${{ inputs.type == 'container' && inputs.job == 'lint' }}
+      shell: bash
+      run: |
+        if [ ${{ runner.arch }} = "ARM64" ]; then
+          ARCH="arm64"
+        elif [ ${{ runner.arch }} = "X64" ]; then
+          ARCH="x86_64"
+        else
+          echo "::error title=unsupported cpu architecture"
+          exit 1
+        fi
+
+        curl -fsSL \
+          -o /usr/local/bin/hadolint \
+          "https://github.com/hadolint/hadolint/releases/download/v${{ inputs.version_hadolint }}/hadolint-Linux-${ARCH}"
+
+        chmod +x /usr/local/bin/hadolint
+
+    - name: install checkov
+      if: ${{ inputs.type == 'container' && inputs.job == 'scan' }}
+      shell: bash
+      run: |
+        pip install --user checkov==${{ inputs.version_checkov }}
+        which checkov
+
+    - name: setup qemu
+      if: ${{ inputs.type == 'container' && ( inputs.job == 'ci' || inputs.job == 'cd')}}
+      uses: docker/setup-qemu-action@v3
+
+    - name: setup docker buildx
+      if: ${{ inputs.type == 'container' && inputs.job == 'cd' }}
+      uses: docker/setup-buildx-action@v1
+
+    #
+    # TYPE: PYTHON
+    #
+
+    - name: install poetry
+      if: ${{ inputs.type == 'python' }}
+      shell: bash
+      run: |
+        pipx install poetry==${{ inputs.version_poetry }}
+        which poetry
+
+    - uses: actions/setup-python@v5
+      if: ${{ inputs.type == 'python' }}
+      with:
+        python-version: ${{ inputs.version_python }}
+
+    - name: install project's dependencies
+      if: ${{ inputs.type == 'python' }}
+      shell: bash
+      run: |
+        if [ -f pyproject.toml ]; then
+          poetry env use ${{ inputs.version_python }}
+          poetry install
+        else
+          echo "::warning title=project does not define a pyproject.toml file"
+        fi

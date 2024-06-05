@@ -1,0 +1,66 @@
+name: Pipeline
+
+on:
+  pull_request:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Install Yamllint
+        run: |
+          pip install --user yamllint
+          which yamllint
+
+      - name: Lint "action.yml"
+        run: |
+          yamllint action.yml
+
+      - name: Test Lint of Container Projects
+        uses: ./
+        with:
+          type: container
+          job: lint
+
+      - name: Test Scan of Container Projects
+        uses: ./
+        with:
+          type: container
+          job: scan
+
+      - name: Test CI of Container Projects
+        uses: ./
+        with:
+          type: container
+          job: ci
+      
+      - name: Test CD of Container Projects
+        uses: ./
+        with:
+          type: container
+          job: cd
+
+      - name: Test Python Projects
+        uses: ./
+        with:
+          type: python
+          version_python: "3.12"
+
+      - name: Verification
+        run: |
+          set -e
+          which hadolint
+          which checkov
+          which docker
+          docker buildx version
+          which pipx
+          which poetry
+          which python3.12
