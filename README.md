@@ -37,7 +37,7 @@ Setting up the `cd` job of a `container` project type:
     job: cd
 ```
 
-Setting up the `lint` job of a `container` project type with a specific version of `hadolint`:
+Setting up the `lint` job of a `python` project type with a specific version of `poetry`:
 
 ```yaml
 - name: Prepare
