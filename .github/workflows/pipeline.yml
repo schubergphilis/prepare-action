@@ -54,9 +54,15 @@ jobs:
           type: python
           version_python: "3.12"
 
+      - name: Test Lambda Projects
+        uses: ./
+        with:
+          type: lambda
+
       - name: Verification
         run: |
           set -e
+          whichn aws
           which hadolint
           which checkov
           which docker
