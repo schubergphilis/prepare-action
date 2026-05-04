@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
 
 jobs:
@@ -41,26 +41,19 @@ jobs:
         with:
           type: container
           job: ci
-      
+
       - name: Test CD of Container Projects
         uses: ./
         with:
           type: container
           job: cd
 
-      - name: Test Python Projects
-        uses: ./
-        with:
-          type: python
-          version_python: "3.12"
-
       - name: Verification
         run: |
           set -e
-          which hadolint
-          which checkov
-          which docker
+          task --version
+          direnv --version
+          hadolint --version
+          checkov --version
+          docker --version
           docker buildx version
-          which pipx
-          which poetry
-          which python3.12
