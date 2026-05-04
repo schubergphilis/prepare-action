@@ -1,13 +1,36 @@
 # yamllint disable rule:document-start rule:line-length
 
+# ##############################################################################
+# ACTION
+# ##############################################################################
+
+# ------------------------------------------------------------------------------
+# METADATA
+# ------------------------------------------------------------------------------
+
+#
+# GENERAL
+#
+
 name: "Prepare"
 description: "Prepare the runner environment for jobs of a specific project type"
+
+#
+# BRANDING
+#
+
+branding:
+  icon: "circle"
+  color: "gray-dark"
+
+# ##############################################################################
+# INPUTS
+# ##############################################################################
 
 inputs:
   job:
     description: "Job we are preparing for"
-    required: false
-    default: "unknown"
+    required: true
 
   type:
     description: "Project type we are preparing for"
@@ -16,31 +39,33 @@ inputs:
   version_checkov:
     description: "Version of checkov to be installed"
     required: false
-    default: "3.2.125"
+    default: "3.2.521"
 
   version_hadolint:
     description: "Version of hadolint to be installed"
     required: false
-    default: "2.12.0"
+    default: "2.14.0"
 
-  version_poetry:
-    description: "Version of poetry to be installed"
+  version_task:
+    description: "Version of task to be installed"
     required: false
-    default: "1.8.3"
+    default: "3.50.0"
 
-  version_python:
-    description: "Version of python to be installed"
-    required: false
-    default: "3.10"
+# ##############################################################################
+# OUTPUTS
+# ##############################################################################
+
+#
+# Empty
+#
+
+# ##############################################################################
+# RUN
+# ##############################################################################
 
 runs:
   using: "composite"
   steps:
-
-    #
-    # COMMON
-    #
-
     - name: check runner os
       if: ${{ runner.os != 'Linux' }}
       shell: bash
@@ -48,75 +73,75 @@ runs:
         echo "::error title=unsupported os"
         exit 1
 
-
-    - name: install pipx
-      shell: bash
-      run: |
-        pip install --user pipx
-        which pipx
-        pipx ensurepath
-
-    #
-    # TYPE: CONTAINER
-    #
-
-    - name: install hadolint
-      if: ${{ inputs.type == 'container' && inputs.job == 'lint' }}
+    - name: setup task
       shell: bash
       run: |
         if [ ${{ runner.arch }} = "ARM64" ]; then
-          ARCH="arm64"
+          cpuarch="arm64"
         elif [ ${{ runner.arch }} = "X64" ]; then
-          ARCH="x86_64"
+          cpuarch="amd64"
         else
           echo "::error title=unsupported cpu architecture"
           exit 1
         fi
 
-        curl -fsSL \
-          -o /usr/local/bin/hadolint \
-          "https://github.com/hadolint/hadolint/releases/download/v${{ inputs.version_hadolint }}/hadolint-Linux-${ARCH}"
+        curl -sOL "https://github.com/go-task/task/releases/download/v${{ inputs.version_task }}/task_checksums.txt"
+        curl -sOL "https://github.com/go-task/task/releases/download/v${{ inputs.version_task }}/task_linux_${cpuarch}.tar.gz"
+        sha256sum -c task_checksums.txt --ignore-missing
+        tar zxf task_linux_${cpuarch}.tar.gz task
+        mv task /usr/local/bin/
+        chmod +x /usr/local/bin/task
+        rm -f task_*
 
+    - name: setup direnv
+      shell: bash
+      run: |
+        if [ ${{ runner.arch }} = "ARM64" ]; then
+          cpuarch="arm64"
+          checksum="2a9cef8d73521d6a3ec3f2871c4b747b8c4cc038628c1b57a7efa42b393a2d82"
+        elif [ ${{ runner.arch }} = "X64" ]; then
+          cpuarch="amd64"
+          checksum="1f1b93dd6f38523fde26dfac96151ef9d31a374e3005cd3345fb93555ae0c9b5"
+        else
+          echo "::error title=unsupported cpu architecture"
+          exit 1
+        fi
+
+        curl -sOL "https://github.com/direnv/direnv/releases/download/v2.37.1/direnv.linux-${cpuarch}"
+        echo "${checksum}  direnv.linux-${cpuarch}" | sha256sum -c -
+        mv "direnv.linux-${cpuarch}" /usr/local/bin/direnv
+        chmod +x /usr/local/bin/direnv
+
+    - name: setup hadolint
+      if: ${{ inputs.type == 'container' && inputs.job == 'lint' }}
+      shell: bash
+      run: |
+        if [ ${{ runner.arch }} = "ARM64" ]; then
+          cpuarch="arm64"
+        elif [ ${{ runner.arch }} = "X64" ]; then
+          cpuarch="x86_64"
+        else
+          echo "::error title=unsupported cpu architecture"
+          exit 1
+        fi
+
+        curl -sOL "https://github.com/hadolint/hadolint/releases/download/v${{ inputs.version_hadolint }}/hadolint-linux-${cpuarch}"
+        curl -sOL "https://github.com/hadolint/hadolint/releases/download/v${{ inputs.version_hadolint }}/hadolint-linux-${cpuarch}.sha256"
+        sha256sum -c "hadolint-linux-${cpuarch}.sha256"
+        mv "hadolint-linux-${cpuarch}" /usr/local/bin/hadolint
         chmod +x /usr/local/bin/hadolint
+        rm -f hadolint-*
 
     - name: install checkov
       if: ${{ inputs.type == 'container' && inputs.job == 'scan' }}
       shell: bash
       run: |
         pip install --user checkov==${{ inputs.version_checkov }}
-        which checkov
 
     - name: setup qemu
-      if: ${{ inputs.type == 'container' && ( inputs.job == 'ci' || inputs.job == 'cd')}}
-      uses: docker/setup-qemu-action@v3
+      if: ${{ inputs.type == 'container' && (inputs.job == 'ci' || inputs.job == 'cd') }}
+      uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
 
     - name: setup docker buildx
       if: ${{ inputs.type == 'container' && inputs.job == 'cd' }}
-      uses: docker/setup-buildx-action@v1
-
-    #
-    # TYPE: PYTHON
-    #
-
-    - name: install poetry
-      if: ${{ inputs.type == 'python' }}
-      shell: bash
-      run: |
-        pipx install poetry==${{ inputs.version_poetry }}
-        which poetry
-
-    - uses: actions/setup-python@v5
-      if: ${{ inputs.type == 'python' }}
-      with:
-        python-version: ${{ inputs.version_python }}
-
-    - name: install project's dependencies
-      if: ${{ inputs.type == 'python' }}
-      shell: bash
-      run: |
-        if [ -f pyproject.toml ]; then
-          poetry env use ${{ inputs.version_python }}
-          poetry install
-        else
-          echo "::warning title=project does not define a pyproject.toml file"
-        fi
+      uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
